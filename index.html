@@ -77,6 +77,11 @@ Not Connected
 
 <br>
 
+<label>D Key</label>
+<select id="keyD"></select>
+
+<br>
+
 <button onclick="saveConfig()">
 Save Config
 </button>
@@ -139,7 +144,12 @@ const keyTable = [
     {name:"F9", value:66},
     {name:"F10", value:67},
     {name:"F11", value:68},
-    {name:"F12", value:69}
+    {name:"F12", value:69},
+    
+    {name:"Right Arrow", value:79},
+    {name:"Left Arrow", value:80},
+    {name:"Down Arrow", value:81},
+    {name:"Up Arrow", value:82}
 ];
 
 function initSelect(id)
@@ -161,7 +171,7 @@ function initSelect(id)
 initSelect("keyA");
 initSelect("keyB");
 initSelect("keyC");
-
+initSelect("keyD");
 async function connectBLE()
 {
     const SERVICE_UUID = '12345678-1234-5678-1234-56789abcdef0';
@@ -226,11 +236,15 @@ async function saveConfig()
     let keyC =
         parseInt(document.getElementById("keyC").value);
 
+    let keyD =
+        parseInt(document.getElementById("keyD").value);
+
     const data = Uint8Array.of(
         0,
         keyA,
         keyB,
-        keyC
+        keyC,
+        keyD
     );
 
     await characteristic.writeValue(data);
@@ -261,15 +275,20 @@ async function readConfig()
     const keyC =
         value.getUint8(3);
 
+    const keyD =
+        value.getUint8(4);
+
     document.getElementById("keyA").value = keyA;
     document.getElementById("keyB").value = keyB;
     document.getElementById("keyC").value = keyC;
+    document.getElementById("keyD").value = keyD;
 
     alert(
         "Layer="+layer+
         "\nA="+keyA+
         "\nB="+keyB+
-        "\nC="+keyC
+        "\nC="+keyC+
+        "\nD="+keyD
     );
 }
 
