@@ -1,307 +1,317 @@
 <!DOCTYPE html>
 <html>
-<head>
-<meta charset="utf-8">
-<title>BLE Keyboard Config</title>
+    <head>
+        <meta charset="utf-8">
+        <title>BLE Keyboard Config</title>
 
-<style>
-body{
-    font-family: Arial;
-    max-width:800px;
-    margin:auto;
-    padding:20px;
-}
-
-h2{
-    color:#333;
-}
-
-.card{
-    border:1px solid #ddd;
-    border-radius:10px;
-    padding:20px;
-    margin-top:20px;
-}
-
-select{
-    width:200px;
-    height:35px;
-    margin:10px;
-}
-
-button{
-    height:40px;
-    padding:0 20px;
-    margin:10px;
-}
-
-.status{
-    color:green;
-    font-weight:bold;
-}
-</style>
-
-</head>
-<body>
-
-<h2>BLE Keyboard Config Tool</h2>
-
-<div class="card">
-
-<button onclick="connectBLE()">
-Connect Keyboard
-</button>
-
-<span id="status" class="status">
-Not Connected
-</span>
-
-</div>
-
-<div class="card">
-
-<h3>Layer 0</h3>
-
-<label>A Key</label>
-<select id="keyA"></select>
-
-<br>
-
-<label>B Key</label>
-<select id="keyB"></select>
-
-<br>
-
-<label>C Key</label>
-<select id="keyC"></select>
-
-<br>
-
-<label>D Key</label>
-<select id="keyD"></select>
-
-<br>
-
-<button onclick="saveConfig()">
-Save Config
-</button>
-
-<button onclick="readConfig()">
-Read Config
-</button>
-
-</div>
-
-<script>
-
-let characteristic = null;
-
-/*
- HID Key Table
-*/
-const keyTable = [
-    {name:"A", value:4},
-    {name:"B", value:5},
-    {name:"C", value:6},
-    {name:"D", value:7},
-    {name:"E", value:8},
-    {name:"F", value:9},
-    {name:"G", value:10},
-    {name:"H", value:11},
-    {name:"I", value:12},
-    {name:"J", value:13},
-    {name:"K", value:14},
-    {name:"L", value:15},
-    {name:"M", value:16},
-    {name:"N", value:17},
-    {name:"O", value:18},
-    {name:"P", value:19},
-    {name:"Q", value:20},
-    {name:"R", value:21},
-    {name:"S", value:22},
-    {name:"T", value:23},
-    {name:"U", value:24},
-    {name:"V", value:25},
-    {name:"W", value:26},
-    {name:"X", value:27},
-    {name:"Y", value:28},
-    {name:"Z", value:29},
-
-    {name:"Enter", value:40},
-    {name:"Esc", value:41},
-    {name:"Backspace", value:42},
-    {name:"Tab", value:43},
-    {name:"Space", value:44},
-
-    {name:"F1", value:58},
-    {name:"F2", value:59},
-    {name:"F3", value:60},
-    {name:"F4", value:61},
-    {name:"F5", value:62},
-    {name:"F6", value:63},
-    {name:"F7", value:64},
-    {name:"F8", value:65},
-    {name:"F9", value:66},
-    {name:"F10", value:67},
-    {name:"F11", value:68},
-    {name:"F12", value:69},
-    
-    {name:"Right Arrow", value:79},
-    {name:"Left Arrow", value:80},
-    {name:"Down Arrow", value:81},
-    {name:"Up Arrow", value:82},
-
-    {name:"Left Ctrl", value:224},
-    {name:"Left Shift", value:225},
-    {name:"Left Alt", value:226},
-    {name:"Left Win", value:227},
-    {name:"Right Ctrl", value:228},
-    {name:"Right Shift", value:229},
-    {name:"Right Alt", value:230},
-    {name:"Right Win", value:231}
-];
-
-function initSelect(id)
-{
-    let sel = document.getElementById(id);
-
-    keyTable.forEach(item=>{
-
-        let option = document.createElement("option");
-
-        option.value = item.value;
-        option.text = item.name;
-
-        sel.appendChild(option);
-
-    });
-}
-
-initSelect("keyA");
-initSelect("keyB");
-initSelect("keyC");
-initSelect("keyD");
-async function connectBLE()
-{
-    const SERVICE_UUID = '12345678-1234-5678-1234-56789abcdef0';
-    const CHAR_UUID = '12345679-1234-5678-1234-56789abcdef0';
-
-    try {
-        const device = await navigator.bluetooth.requestDevice({
-            filters: [{ services: [SERVICE_UUID] }],
-            optionalServices: [SERVICE_UUID]
-        });
-
-        device.addEventListener('gattserverdisconnected', () => {
-            document.getElementById('status').innerText = 'Disconnected';
-            console.warn('GATT server disconnected');
-        });
-
-        // Try to connect (with simple retry)
-        let server = null;
-        for (let attempt = 0; attempt < 3; attempt++) {
-            try {
-                server = await device.gatt.connect();
-                if (device.gatt.connected) break;
-            } catch (err) {
-                console.warn('connect attempt', attempt, err);
+        <style>
+            body{
+                font-family: Arial;
+                max-width:800px;
+                margin:auto;
+                padding:20px;
             }
-            await new Promise(r => setTimeout(r, 300));
-        }
 
-        if (!server || !device.gatt.connected) {
-            throw new Error('Unable to connect to GATT server');
-        }
+            h2{
+                color:#333;
+            }
 
-        const service = await server.getPrimaryService(SERVICE_UUID);
-        characteristic = await service.getCharacteristic(CHAR_UUID);
+            .card{
+                border:1px solid #ddd;
+                border-radius:10px;
+                padding:20px;
+                margin-top:20px;
+            }
 
-        document.getElementById('status').innerText = 'Connected';
-        alert('Keyboard Connected');
-    } catch (err) {
-        if (err && err.name === 'NotFoundError') {
-            alert('未选择设备或没有匹配设备，请确认设备正在广播并选择设备。');
-        } else {
-            alert('连接失败：' + (err && err.message ? err.message : err));
-        }
-        console.error(err);
-    }
-}
+            select{
+                width:200px;
+                height:35px;
+                margin:10px;
+            }
 
-async function saveConfig()
-{
-    if(characteristic == null)
-    {
-        alert("Please Connect First");
-        return;
-    }
+            button{
+                height:40px;
+                padding:0 20px;
+                margin:10px;
+            }
 
-    let keyA =
-        parseInt(document.getElementById("keyA").value);
+            .status{
+                color:green;
+                font-weight:bold;
+            }
+        </style>
 
-    let keyB =
-        parseInt(document.getElementById("keyB").value);
+    </head>
+    <body>
+        <h2>BLE Keyboard Config Tool</h2>
 
-    let keyC =
-        parseInt(document.getElementById("keyC").value);
+        <div class="card">            
+            <button onclick="connectBLE()">
+                Connect Keyboard
+            </button>
 
-    let keyD =
-        parseInt(document.getElementById("keyD").value);
+            <button onclick="disconnectBLE()">
+                Disconnect Keyboard
+            </button>
 
-    const data = Uint8Array.of(
-        0,
-        keyA,
-        keyB,
-        keyC,
-        keyD
-    );
+            <span id="status" class="status">
+                Not Connected
+            </span>
+        </div>
 
-    await characteristic.writeValue(data);
+        <div class="card">
 
-    alert("Config Saved");
-}
+        <h3>Layer 0</h3>
 
-async function readConfig()
-{
-    if(characteristic == null)
-    {
-        alert("Please Connect First");
-        return;
-    }
+            <label>A Key</label>
+            <select id="keyA"></select>
+            <br>
 
-    const value =
-        await characteristic.readValue();
+            <label>B Key</label>
+            <select id="keyB"></select>
+            <br>
 
-    const layer =
-        value.getUint8(0);
+            <label>C Key</label>
+            <select id="keyC"></select>
+            <br>
 
-    const keyA =
-        value.getUint8(1);
+            <label>D Key</label>
+            <select id="keyD"></select>
+            <br>
 
-    const keyB =
-        value.getUint8(2);
+            <button onclick="saveConfig()">
+                Save Config
+            </button>
 
-    const keyC =
-        value.getUint8(3);
+            <button onclick="readConfig()">
+                Read Config
+            </button>
 
-    const keyD =
-        value.getUint8(4);
+        </div>
 
-    document.getElementById("keyA").value = keyA;
-    document.getElementById("keyB").value = keyB;
-    document.getElementById("keyC").value = keyC;
-    document.getElementById("keyD").value = keyD;
+        <script>
 
-    alert(
-        "Layer="+layer+
-        "\nA="+keyA+
-        "\nB="+keyB+
-        "\nC="+keyC+
-        "\nD="+keyD
-    );
-}
+            let device = null;
+            let server = null;
+            let characteristic = null;
+            /*
+            HID Key Table
+            */
+            const keyTable = [
+                {name:"A", value:4},
+                {name:"B", value:5},
+                {name:"C", value:6},
+                {name:"D", value:7},
+                {name:"E", value:8},
+                {name:"F", value:9},
+                {name:"G", value:10},
+                {name:"H", value:11},
+                {name:"I", value:12},
+                {name:"J", value:13},
+                {name:"K", value:14},
+                {name:"L", value:15},
+                {name:"M", value:16},
+                {name:"N", value:17},
+                {name:"O", value:18},
+                {name:"P", value:19},
+                {name:"Q", value:20},
+                {name:"R", value:21},
+                {name:"S", value:22},
+                {name:"T", value:23},
+                {name:"U", value:24},
+                {name:"V", value:25},
+                {name:"W", value:26},
+                {name:"X", value:27},
+                {name:"Y", value:28},
+                {name:"Z", value:29},
 
-</script>
+                {name:"Enter", value:40},
+                {name:"Esc", value:41},
+                {name:"Backspace", value:42},
+                {name:"Tab", value:43},
+                {name:"Space", value:44},
 
-</body>
+                {name:"F1", value:58},
+                {name:"F2", value:59},
+                {name:"F3", value:60},
+                {name:"F4", value:61},
+                {name:"F5", value:62},
+                {name:"F6", value:63},
+                {name:"F7", value:64},
+                {name:"F8", value:65},
+                {name:"F9", value:66},
+                {name:"F10", value:67},
+                {name:"F11", value:68},
+                {name:"F12", value:69},
+                
+                {name:"Right Arrow", value:79},
+                {name:"Left Arrow", value:80},
+                {name:"Down Arrow", value:81},
+                {name:"Up Arrow", value:82},
+
+                {name:"Left Ctrl", value:224},
+                {name:"Left Shift", value:225},
+                {name:"Left Alt", value:226},
+                {name:"Left Win", value:227},
+                {name:"Right Ctrl", value:228},
+                {name:"Right Shift", value:229},
+                {name:"Right Alt", value:230},
+                {name:"Right Win", value:231}
+            ];
+            // Initialize the select elements with options from the keyTable
+            function initSelect(id)
+            {
+                let sel = document.getElementById(id);
+
+                keyTable.forEach(item=>{
+                    let option = document.createElement("option");
+                    option.value = item.value;
+                    option.text = item.name;
+                    sel.appendChild(option);
+                });
+            }
+
+            initSelect("keyA");
+            initSelect("keyB");
+            initSelect("keyC");
+            initSelect("keyD");
+            async function connectBLE()
+            {
+                const SERVICE_UUID = '12345678-1234-5678-1234-56789abcdef0';
+                const CHAR_UUID = '12345679-1234-5678-1234-56789abcdef0';
+
+                try {
+                    device = await navigator.bluetooth.requestDevice({
+                        filters: [{ services: [SERVICE_UUID] }],
+                        optionalServices: [SERVICE_UUID]
+                    });
+
+                    device.addEventListener('gattserverdisconnected', () => {
+                        document.getElementById('status').innerText = 'Disconnected';
+                        characteristic = null;
+                        server = null;
+                        console.warn('GATT server disconnected');
+                    });
+
+                    // Try to connect (with simple retry)
+                    for (let attempt = 0; attempt < 3; attempt++) {
+                        try {
+                            server = await device.gatt.connect();
+                            if (device.gatt.connected) break;
+                        } catch (err) {
+                            console.warn('connect attempt', attempt, err);
+                        }
+                        await new Promise(r => setTimeout(r, 300));
+                    }
+
+                    if (!server || !device.gatt.connected) {
+                        throw new Error('Unable to connect to GATT server');
+                    }
+
+                    const service = await server.getPrimaryService(SERVICE_UUID);
+                    characteristic = await service.getCharacteristic(CHAR_UUID);
+
+                    document.getElementById('status').innerText = 'Connected';
+                    alert('Keyboard Connected');
+                } catch (err) {
+                    if (err && err.name === 'NotFoundError') {
+                        alert('未选择设备或没有匹配设备，请确认设备正在广播并选择设备。');
+                    } else {
+                        alert('连接失败：' + (err && err.message ? err.message : err));
+                    }
+                    console.error(err);
+                }
+            }
+
+            async function disconnectBLE()
+            {
+                if (!device || !device.gatt || !device.gatt.connected) {
+                    characteristic = null;
+                    server = null;
+                    document.getElementById('status').innerText = 'Disconnected';
+                    alert('Keyboard already disconnected');
+                    return;
+                }
+
+                device.gatt.disconnect();
+                characteristic = null;
+                server = null;
+                document.getElementById('status').innerText = 'Disconnected';
+                alert('Keyboard Disconnected');
+            }
+
+            async function saveConfig()
+            {
+                if(characteristic == null)
+                {
+                    alert("Please Connect First");
+                    return;
+                }
+
+                let keyA =
+                    parseInt(document.getElementById("keyA").value);
+
+                let keyB =
+                    parseInt(document.getElementById("keyB").value);
+
+                let keyC =
+                    parseInt(document.getElementById("keyC").value);
+
+                let keyD =
+                    parseInt(document.getElementById("keyD").value);
+
+                const data = Uint8Array.of(
+                    0,
+                    keyA,
+                    keyB,
+                    keyC,
+                    keyD
+                );
+
+                await characteristic.writeValue(data);
+
+                alert("Config Saved");
+            }
+
+            async function readConfig()
+            {
+                if(characteristic == null)
+                {
+                    alert("Please Connect First");
+                    return;
+                }
+
+                const value =
+                    await characteristic.readValue();
+
+                const layer =
+                    value.getUint8(0);
+
+                const keyA =
+                    value.getUint8(1);
+
+                const keyB =
+                    value.getUint8(2);
+
+                const keyC =
+                    value.getUint8(3);
+
+                const keyD =
+                    value.getUint8(4);
+
+                document.getElementById("keyA").value = keyA;
+                document.getElementById("keyB").value = keyB;
+                document.getElementById("keyC").value = keyC;
+                document.getElementById("keyD").value = keyD;
+
+                alert(
+                    "Layer="+layer+
+                    "\nA="+keyA+
+                    "\nB="+keyB+
+                    "\nC="+keyC+
+                    "\nD="+keyD
+                );
+            }
+        </script>
+    </body>
 </html>
