@@ -39,6 +39,15 @@
                 color:green;
                 font-weight:bold;
             }
+
+            .mod-group{
+                margin:2px 0 8px 20px;
+                font-size:0.9em;
+            }
+            .mod-group label{
+                margin-right:10px;
+                white-space:nowrap;
+            }
         </style>
 
     </head>
@@ -79,6 +88,14 @@
             <select id="keyD"></select>
             <br>
 
+            <label>E Key (BTN1)</label>
+            <select id="keyE"></select>
+            <br>
+
+            <label>F Key (BTN2)</label>
+            <select id="keyF"></select>
+            <br>
+
             <button onclick="saveConfig()">
                 Save Config
             </button>
@@ -98,6 +115,7 @@
             HID Key Table
             */
             const keyTable = [
+                {name:"-- None --", value:0},
                 {name:"A", value:4},
                 {name:"B", value:5},
                 {name:"C", value:6},
@@ -125,11 +143,23 @@
                 {name:"Y", value:28},
                 {name:"Z", value:29},
 
+                {name:"1", value:30},
+                {name:"2", value:31},
+                {name:"3", value:32},
+                {name:"4", value:33},
+                {name:"5", value:34},
+                {name:"6", value:35},
+                {name:"7", value:36},
+                {name:"8", value:37},
+                {name:"9", value:38},
+                {name:"0", value:39},
+
                 {name:"Enter", value:40},
                 {name:"Esc", value:41},
                 {name:"Backspace", value:42},
                 {name:"Tab", value:43},
                 {name:"Space", value:44},
+                {name:"Caps Lock", value:57},
 
                 {name:"F1", value:58},
                 {name:"F2", value:59},
@@ -175,6 +205,67 @@
             initSelect("keyB");
             initSelect("keyC");
             initSelect("keyD");
+            initSelect("keyE");
+            initSelect("keyF");
+
+            /* Modifier table — maps HID report byte0 bit positions. */
+            const modTable = [
+                {name: "LCtrl",  bit: 0},
+                {name: "LShift", bit: 1},
+                {name: "LAlt",   bit: 2},
+                {name: "LWin",   bit: 3},
+                {name: "RCtrl",  bit: 4},
+                {name: "RShift", bit: 5},
+                {name: "RAlt",   bit: 6},
+                {name: "RWin",   bit: 7}
+            ];
+
+            /* Per-key checkbox references: modCheckboxes['A'][0..7] etc. */
+            const modCheckboxes = { A: [], B: [], C: [], D: [], E: [], F: [] };
+
+            function createModCheckboxes(selectId, keyName)
+            {
+                const select = document.getElementById(selectId);
+                const div = document.createElement("div");
+                div.className = "mod-group";
+                div.appendChild(document.createTextNode("Modifiers: "));
+                modTable.forEach(m => {
+                    const label = document.createElement("label");
+                    const cb = document.createElement("input");
+                    cb.type = "checkbox";
+                    cb.id = "mod_" + keyName + "_" + m.name;
+                    label.appendChild(cb);
+                    label.appendChild(document.createTextNode(" " + m.name));
+                    div.appendChild(label);
+                    modCheckboxes[keyName].push(cb);
+                });
+                select.parentNode.insertBefore(div, select.nextSibling);
+            }
+
+            createModCheckboxes("keyA", "A");
+            createModCheckboxes("keyB", "B");
+            createModCheckboxes("keyC", "C");
+            createModCheckboxes("keyD", "D");
+            createModCheckboxes("keyE", "E");
+            createModCheckboxes("keyF", "F");
+
+            /* Pack checkbox states into a modifier bitmask byte. */
+            function packMod(keyName)
+            {
+                let mod = 0;
+                modCheckboxes[keyName].forEach((cb, i) => {
+                    if (cb.checked) mod |= (1 << i);
+                });
+                return mod;
+            }
+
+            /* Unpack a modifier bitmask byte into checkbox states. */
+            function unpackMod(value, keyName)
+            {
+                modCheckboxes[keyName].forEach((cb, i) => {
+                    cb.checked = (value & (1 << i)) !== 0;
+                });
+            }
             async function connectBLE()
             {
                 const SERVICE_UUID = '12345678-1234-5678-1234-56789abcdef0';
@@ -260,13 +351,27 @@
                 let keyD =
                     parseInt(document.getElementById("keyD").value);
 
-                const data = Uint8Array.of(
-                    0,
-                    keyA,
-                    keyB,
-                    keyC,
-                    keyD
-                );
+                let keyE =
+                    parseInt(document.getElementById("keyE").value);
+
+                let keyF =
+                    parseInt(document.getElementById("keyF").value);
+
+                /* 13-byte payload: layer + 6*(mod + key) */
+                const data = new Uint8Array(13);
+                data[0]  = 0;           // layer
+                data[1]  = packMod('A');
+                data[2]  = keyA;
+                data[3]  = packMod('B');
+                data[4]  = keyB;
+                data[5]  = packMod('C');
+                data[6]  = keyC;
+                data[7]  = packMod('D');
+                data[8]  = keyD;
+                data[9]  = packMod('E');
+                data[10] = keyE;
+                data[11] = packMod('F');
+                data[12] = keyF;
 
                 await characteristic.writeValue(data);
 
@@ -284,32 +389,116 @@
                 const value =
                     await characteristic.readValue();
 
-                const layer =
-                    value.getUint8(0);
+                /* Support both old 5-byte and new 9-byte formats. */
+                if (value.byteLength === 5) {
+                    /* Legacy 5-byte format: treat all mods as 0. */
+                    const layer = value.getUint8(0);
+                    const keyA  = value.getUint8(1);
+                    const keyB  = value.getUint8(2);
+                    const keyC  = value.getUint8(3);
+                    const keyD  = value.getUint8(4);
 
-                const keyA =
-                    value.getUint8(1);
+                    document.getElementById("keyA").value = keyA;
+                    document.getElementById("keyB").value = keyB;
+                    document.getElementById("keyC").value = keyC;
+                    document.getElementById("keyD").value = keyD;
 
-                const keyB =
-                    value.getUint8(2);
+                    unpackMod(0, 'A');
+                    unpackMod(0, 'B');
+                    unpackMod(0, 'C');
+                    unpackMod(0, 'D');
 
-                const keyC =
-                    value.getUint8(3);
+                    alert("Layer=" + layer +
+                          "\nA=" + keyA + " (mod=00)" +
+                          "\nB=" + keyB + " (mod=00)" +
+                          "\nC=" + keyC + " (mod=00)" +
+                          "\nD=" + keyD + " (mod=00)" +
+                          "\n\nNote: Read old 5-byte config. Save to upgrade.");
+                    return;
+                }
 
-                const keyD =
-                    value.getUint8(4);
+                /* Support 5-byte (v3), 9-byte (v4), and 13-byte (v4.1) formats. */
+                if (value.byteLength === 9) {
+                    /* v4 9-byte: A-D only, no E/F. */
+                    const layer = value.getUint8(0);
+                    const modA = value.getUint8(1);
+                    const keyA = value.getUint8(2);
+                    const modB = value.getUint8(3);
+                    const keyB = value.getUint8(4);
+                    const modC = value.getUint8(5);
+                    const keyC = value.getUint8(6);
+                    const modD = value.getUint8(7);
+                    const keyD = value.getUint8(8);
+
+                    document.getElementById("keyA").value = keyA;
+                    document.getElementById("keyB").value = keyB;
+                    document.getElementById("keyC").value = keyC;
+                    document.getElementById("keyD").value = keyD;
+                    document.getElementById("keyE").value = 0;
+                    document.getElementById("keyF").value = 0;
+
+                    unpackMod(modA, 'A'); unpackMod(modB, 'B');
+                    unpackMod(modC, 'C'); unpackMod(modD, 'D');
+                    unpackMod(0, 'E');    unpackMod(0, 'F');
+
+                    alert("Layer=" + layer +
+                          "\nA(mod=" + modA.toString(16).padStart(2,'0') + ",key=" + keyA + ")" +
+                          "\nB(mod=" + modB.toString(16).padStart(2,'0') + ",key=" + keyB + ")" +
+                          "\nC(mod=" + modC.toString(16).padStart(2,'0') + ",key=" + keyC + ")" +
+                          "\nD(mod=" + modD.toString(16).padStart(2,'0') + ",key=" + keyD + ")" +
+                          "\nE(mod=00,key=0)" +
+                          "\nF(mod=00,key=0)" +
+                          "\n\nNote: Read v4 9-byte config. Save to upgrade to v4.1.");
+                    return;
+                }
+
+                if (value.byteLength !== 13) {
+                    alert("Unexpected config size: " + value.byteLength +
+                          " (expected 13 bytes). Firmware may be running an " +
+                          "incompatible version.");
+                    return;
+                }
+
+                const layer = value.getUint8(0);
+
+                const modA = value.getUint8(1);
+                const keyA = value.getUint8(2);
+                const modB = value.getUint8(3);
+                const keyB = value.getUint8(4);
+                const modC = value.getUint8(5);
+                const keyC = value.getUint8(6);
+                const modD = value.getUint8(7);
+                const keyD = value.getUint8(8);
+                const modE = value.getUint8(9);
+                const keyE = value.getUint8(10);
+                const modF = value.getUint8(11);
+                const keyF = value.getUint8(12);
 
                 document.getElementById("keyA").value = keyA;
                 document.getElementById("keyB").value = keyB;
                 document.getElementById("keyC").value = keyC;
                 document.getElementById("keyD").value = keyD;
+                document.getElementById("keyE").value = keyE;
+                document.getElementById("keyF").value = keyF;
+
+                unpackMod(modA, 'A'); unpackMod(modB, 'B');
+                unpackMod(modC, 'C'); unpackMod(modD, 'D');
+                unpackMod(modE, 'E'); unpackMod(modF, 'F');
 
                 alert(
-                    "Layer="+layer+
-                    "\nA="+keyA+
-                    "\nB="+keyB+
-                    "\nC="+keyC+
-                    "\nD="+keyD
+                    "Layer=" + layer +
+                    "\nA(mod=" + modA.toString(16).padStart(2,'0') +
+                    ",key=" + keyA + ")" +
+                    "\nB(mod=" + modB.toString(16).padStart(2,'0') +
+                    ",key=" + keyB + ")" +
+                    "\nC(mod=" + modC.toString(16).padStart(2,'0') +
+                    ",key=" + keyC + ")" +
+                    "\nD(mod=" + modD.toString(16).padStart(2,'0') +
+                    ",key=" + keyD + ")" +
+                    "\nE(mod=" + modE.toString(16).padStart(2,'0') +
+                    ",key=" + keyE + ")" +
+                    "\nF(mod=" + modF.toString(16).padStart(2,'0') +
+                    ",key=" + keyF + ")"
                 );
             }
         </script>
